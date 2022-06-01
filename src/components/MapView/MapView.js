@@ -18,6 +18,7 @@ import Checkbox from "@mui/material/Checkbox";
 import petitions from "../Petitions";
 import { useForm } from "react-hook-form";
 import SearchIcon from "@mui/icons-material/Search";
+import { useParams } from "react-router-dom";
 
 const ITEM_HEIGHT = 48;
 const ITEM_PADDING_TOP = 8;
@@ -31,12 +32,18 @@ const MenuProps = {
 };
 
 export default function MapView() {
-  let places = sessionStorage.getItem("places");
+  let { nameFilter } = useParams();
+  let { categoryFilter } = useParams();
+  let { featuresFilter } = useParams();
   const [selectedCategory, setSelectedCategory] = useState("");
   const [name, setName] = useState("");
+  const [places, setPlaces] = useState([]);
   const [categories, setCategories] = useState([]);
   const [features, setFeatures] = useState([]);
   const [feature, setFeature] = useState([]);
+  const [latitude, setLatitude] = useState("-35.768021379446026");
+  const [longitude, setLongitude] = useState("-58.49708847640829");
+  const [currentResponse, setCurrentResponse] = useState("sucess");
 
   useEffect(() => {
     getData();
@@ -44,31 +51,71 @@ export default function MapView() {
   }, []);
 
   const getData = async () => {
-    if (places === null) {
-      const res = await petitions.GetPlaces();
-      sessionStorage.setItem("places", JSON.stringify(res));
-      places = sessionStorage.getItem("places");
+    if (nameFilter === undefined) {
+      nameFilter = "all";
     }
+    if (categoryFilter === undefined) {
+      categoryFilter = "all";
+    }
+    if (featuresFilter === undefined) {
+      featuresFilter = "all";
+    }
+    let data = {};
+    data.name = nameFilter;
+    data.category = categoryFilter;
+    data.features = featuresFilter.split(",");
+    const res = await petitions.GetPlacesFilter(data);
+    setPlaces(res);
     const categoriesValues = await petitions.GetCategories();
     const featureValues = await petitions.GetFeatures();
     setFeatures(featureValues.map((x) => x.name));
     setCategories(categoriesValues);
-    const category = sessionStorage.getItem("category");
-    const name = sessionStorage.getItem("name");
-    const features = sessionStorage.getItem("features");
-    if (name === null) {
-      sessionStorage.setItem("name", "");
-    }
-    setName(sessionStorage.getItem("name"));
-    if (category !== null) {
-      setSelectedCategory(category ? category.trim() : "");
+    if (nameFilter !== "all") {
+      setName(nameFilter);
     } else {
-      setSelectedCategory("" ? "".trim() : "");
+      setName("");
     }
-    if (features === null) {
-      sessionStorage.setItem("features", JSON.stringify([]));
+    if (categoryFilter !== "all") {
+      setSelectedCategory(categoryFilter ? categoryFilter.trim() : "");
+    } else {
+      setSelectedCategory("Todas" ? "Todas".trim() : "");
     }
-    setFeature(JSON.parse(sessionStorage.getItem("features")));
+    if (featuresFilter !== "all") {
+      setFeature(JSON.parse(JSON.stringify(featuresFilter.split(","))));
+    } else {
+      setFeature(JSON.parse(JSON.stringify([])));
+    }
+    try {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          successCurrentLocation,
+          errorCurrentLocation,
+          { maximumAge: 10000, timeout: 5000, enableHighAccuracy: true }
+        );
+      } else {
+        alert(
+          "Atencion, este navegador no soporta visualizar su ubicación actual"
+        );
+      }
+    } catch (err) {
+      console.log(err);
+      setLatitude("-35.768021379446026");
+      setLongitude("-58.49708847640829");
+      setCurrentResponse("fail");
+    }
+
+    function successCurrentLocation(pos) {
+      var crd = pos.coords;
+      setLatitude(crd.latitude);
+      setLongitude(crd.longitude);
+    }
+
+    function errorCurrentLocation(err) {
+      console.log("ERROR(" + err.code + "): " + err.message);
+      setLatitude("-35.768021379446026");
+      setLongitude("-58.49708847640829");
+      setCurrentResponse("fail");
+    }
   };
 
   const { register, handleSubmit } = useForm();
@@ -95,58 +142,30 @@ export default function MapView() {
   };
 
   const onSubmit = async (data) => {
-    if (data.category === "") {
-      data.category = "Todas";
+    let nameUrl = "all";
+    let categoryUrl = "all";
+    let featuresUrl = "all";
+    if (name !== "") {
+      nameUrl = name;
     }
-    if (data.features === "") {
-      data.features = [];
+    if (data.category !== "") {
+      categoryUrl = data.category;
     }
-    sessionStorage.setItem("category", data.category);
-    sessionStorage.setItem("name", name);
-    sessionStorage.setItem("features", JSON.stringify(data.features));
-    const newPlaces = await petitions.GetPlacesFilter(data);
-    sessionStorage.setItem("places", JSON.stringify(newPlaces));
-    window.location = window.location.href;
+    if (feature.length !== 0) {
+      featuresUrl = feature;
+    }
+    window.location = `/${nameUrl}/${categoryUrl}/${featuresUrl}`;
   };
 
-  try {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        successCurrentLocation,
-        errorCurrentLocation,
-        { maximumAge: 10000, timeout: 5000, enableHighAccuracy: true }
-      );
-    } else {
-      alert(
-        "Atencion, este navegador no soporta visualizar su ubicación actual"
-      );
-      sessionStorage.setItem("current latitude", "not found");
-      sessionStorage.setItem("current longitude", "not found");
-    }
-  } catch (err) {
-    console.log(err);
-  }
-
-  function successCurrentLocation(pos) {
-    var crd = pos.coords;
-    sessionStorage.setItem("current latitude", crd.latitude);
-    sessionStorage.setItem("current longitude", crd.longitude);
-  }
-
-  function errorCurrentLocation(err) {
-    console.log("ERROR(" + err.code + "): " + err.message);
-  }
   return (
-    <div>      
+    <div>
       <form onSubmit={handleSubmit(onSubmit)}>
         <Box>
-          <div className="estilosDeSelect">            
+          <div className="estilosDeSelect">
             <TextField
               className="nombre"
               label="Buscar lugar por nombre"
-              {...register("name", {
-                onChange: handleChangeName,
-              })}
+              onChange={handleChangeName}
               value={name}
               sx={{ width: 250 }}
               style={{ margin: 12 }}
@@ -175,7 +194,6 @@ export default function MapView() {
                 Caracteristicas
               </InputLabel>
               <Select
-                {...register("features")}
                 labelId="feature-multiple-checkbox-label"
                 id="feature-multiple-checkbox"
                 multiple
@@ -206,11 +224,19 @@ export default function MapView() {
       <div className="Map">
         <MapContainer
           className="Map-container"
-          center={{ lat: "-35.768021379446026", lng: "-58.49708847640829" }}
+          center={{
+            lat: latitude,
+            lng: longitude,
+          }}
           zoom={15}
         >
           <TileLayer url="https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png" />
-          <Markers />
+          <Markers
+            places={places}
+            current_latitude={latitude}
+            current_longitude={longitude}
+            current_response={currentResponse}
+          />
         </MapContainer>
       </div>
     </div>
