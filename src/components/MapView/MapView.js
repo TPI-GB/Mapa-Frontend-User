@@ -148,7 +148,7 @@ export default function MapView() {
     if (name !== "") {
       nameUrl = name;
     }
-    if (data.category !== "") {
+    if (data.category !== "" && data.category !== "Todas") {
       categoryUrl = data.category;
     }
     if (feature.length !== 0) {
